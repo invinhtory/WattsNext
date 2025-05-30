@@ -24,7 +24,7 @@ def BEM(U_design, R, eta_0, B, r_hub, Re_design, lambda_design, aero_performance
     """
     #Setup    
     # BEM discretization
-    N = 100  # Number of elements per blade
+    N = 50  # Number of elements per blade
     
     # Air properties
     rho = 1.2  # Wind density - kg/m3
