@@ -24,9 +24,11 @@ from helperfunctions_template import get_foil_data, interp_foil, tiploss, BEM_CL
 plt.close('all')
 
 #%% Setup
-def BEM_analysis(U_design, R, eta_0, lambda_design, B, r_hub, N, performance_file, Re_design, options, BEM_color, rho, nu):
+def BEM_analysis(U_design, R, eta_0, lambda_design, B, r_hub, N, performance_file, Re_design, rho, nu):
+    
+    # Plot style
+    BEM_color = np.array([0, 128, 255]) / 255
     #%% Part A: Blade Shape
-
     # Load airfoil performance data
     foil = get_foil_data(performance_file)
 

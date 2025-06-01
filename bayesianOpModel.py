@@ -8,7 +8,8 @@ from sklearn.gaussian_process.kernels import RBF
 from sklearn.gaussian_process import GaussianProcessRegressor
 
 # kernel
-kernel = RBF()
+kernel = RBF(
+)
 
 # gp regressor
 gp = GaussianProcessRegressor(kernel=kernel)
