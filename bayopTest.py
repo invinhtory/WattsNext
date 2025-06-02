@@ -47,11 +47,17 @@ def get_CL_CD_perf(kf_foil, alpha_range):
     }
 
 
+def compute_shape_penalty(upper, lower):
+    roughness_penalty = np.sum(np.diff(upper)**2 + np.diff(lower)**2)
+    curvature_penalty = np.sum(np.diff(upper, 2)**2 + np.diff(lower, 2)**2)
+    return roughness_penalty, curvature_penalty
+
+
 def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
                initial_kulfan, Re_design, rho, nu, alpha_range):
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    history_dir = f"optimization_history_{timestamp}"
+    history_dir = os.path.join("optimization_history", f"run_{timestamp}")
     os.makedirs(history_dir, exist_ok=True)
 
     optimization_history = []
@@ -61,10 +67,18 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
         try:
             bo_params = [params[f'p{i}'] for i in range(18)]
 
-            if any(np.isnan(bo_params)) or any(np.isinf(bo_params)):
+            if np.any(np.isnan(bo_params)) or np.any(np.isinf(bo_params)):
+                print("Invalid params: NaN or Inf detected")
                 return 0.0
 
             kulfan = bo_to_kulfan(bo_params)
+
+            upper = np.array(kulfan["upper_weights"])
+            lower = np.array(kulfan["lower_weights"])
+
+            if np.any(lower >= upper):
+                print("Constraint violated: lower weights cross or equal upper weights")
+                return 0.0
 
             try:
                 aero = get_CL_CD_perf(kulfan, alpha_range)
@@ -73,7 +87,7 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
                 return 0.0
 
             for key in ['CL', 'CD', 'alpha', 'Re']:
-                if key not in aero or any(np.isnan(aero[key])) or any(np.isinf(aero[key])):
+                if key not in aero or np.any(np.isnan(aero[key])) or np.any(np.isinf(aero[key])):
                     print(f"Bad aero data: {key}")
                     return 0.0
 
@@ -85,10 +99,12 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
             })
 
             if df.isnull().any().any():
+                print("DataFrame contains NaN values")
                 return 0.0
 
-            performance_file = "temp_airfoil_data.xlsx"
-            df.to_excel(performance_file, index=False)
+            performance_file = os.path.join(history_dir, "temp_airfoil_data.xlsx")
+            with pd.ExcelWriter(performance_file) as writer:
+                df.to_excel(writer, index=False)
 
             try:
                 CP, P_e, Re_blade = BEM_analysis(
@@ -106,21 +122,20 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
 
                 optimization_history.append(iteration_data)
 
-                with open(f"{history_dir}/iteration_{iteration_counter[0]}.json", 'w') as f:
+                with open(os.path.join(history_dir, f"iteration_{iteration_counter[0]}.json"), 'w') as f:
                     json.dump(iteration_data, f, indent=2)
 
                 iteration_counter[0] += 1
 
                 if not CP or not np.isfinite(CP):
+                    print("Invalid CP returned")
                     return 0.0
 
-                # Optional regularization term to encourage smooth shapes
                 upper = np.array(kulfan["upper_weights"])
                 lower = np.array(kulfan["lower_weights"])
-                roughness_penalty = np.sum(np.diff(upper)**2 + np.diff(lower)**2)
-                penalty_weight = 0.1
+                roughness_penalty, curvature_penalty = compute_shape_penalty(upper, lower)
 
-                return float(CP) - penalty_weight * roughness_penalty
+                return float(CP) - 0.1 * roughness_penalty - 0.5 * curvature_penalty
 
             finally:
                 if os.path.exists(performance_file):
@@ -130,17 +145,21 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
                         print(f"Failed to remove temp file: {e}")
 
         except Exception as e:
-            print(f"Objective error: {e}")
+            print(f"Objective function error: {e}")
             traceback.print_exc()
             return 0.0
 
-    # Parameter bounds (tuned tighter to avoid self-intersecting shapes)
     pbounds = {
         'p0': (0.01, 0.3),    # leading_edge_weight
         'p1': (0.01, 0.05),   # TE_thickness
     }
-    for i in range(2, 18):
-        pbounds[f'p{i}'] = (-0.3, 0.3)  # Tighter Kulfan weights
+    # Upper weights p2 to p9 should be >= 0 (e.g. 0 to 0.1)
+    for i in range(2, 10):
+        pbounds[f'p{i}'] = (0.0, 0.15)
+
+    # Lower weights p10 to p17 should be <= 0 (e.g. -0.1 to 0)
+    for i in range(10, 18):
+        pbounds[f'p{i}'] = (-0.15, 0.0)
 
     optimizer = BayesianOptimization(
         f=cst_objective,
@@ -150,7 +169,7 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
         allow_duplicate_points=True
     )
 
-    optimizer.set_gp_params(alpha=1e-6, n_restarts_optimizer=10)
+    optimizer.set_gp_params(alpha=1e-3, n_restarts_optimizer=10)
 
     if initial_kulfan:
         init_point = {
@@ -164,12 +183,12 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
         optimizer.probe(init_point)
 
     try:
-        optimizer.maximize(init_points=20, n_iter=200)
+        optimizer.maximize(init_points=20, n_iter=80)
     except Exception as e:
-        print(f"BayesOpt failed: {e}")
+        print(f"Bayesian optimization failed: {e}")
         traceback.print_exc()
 
-    with open(f"{history_dir}/optimization_history.json", 'w') as f:
+    with open(os.path.join(history_dir, "optimization_history.json"), 'w') as f:
         json.dump(optimization_history, f, indent=2)
 
     best_params = optimizer.max['params']

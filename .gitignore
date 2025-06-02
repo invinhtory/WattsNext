@@ -1,5 +1,6 @@
 # Optimization history directories
 optimization_history_*/
+/optimization_history/
 *.gif
 
 # Python
