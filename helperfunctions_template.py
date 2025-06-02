@@ -213,6 +213,7 @@ def get_design_alpha(foil, Re):
     Outputs:
     - alpha: Angle of attack [radians] with maximum CL/CD at design Reynolds number
     """
+
     print(f"foil: {foil}")
     print(f"Re: {Re}")
 
@@ -226,7 +227,9 @@ def get_design_alpha(foil, Re):
 
     # Calculate ratio of lift to drag
     CL_CD = CL / CD
+
     print(f"CL_CD: {CL_CD}")
+
     # plt.figure(1)
     # plt.plot(alphas, CL_CD, '--o')
     # plt.grid(True)
