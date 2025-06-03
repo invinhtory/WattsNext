@@ -1,5 +1,5 @@
 import numpy as np
-from bayes_opt import BayesianOptimization
+from bayes_opt import BayesianOptimization, acquisition
 from BEM import BEM_analysis
 from neuralfoil import get_aero_from_kulfan_parameters
 import traceback
@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import json
 from datetime import datetime
+import scipy as sci
 
 
 def bo_to_kulfan(bo):
@@ -32,7 +33,7 @@ def get_CL_CD_perf(kf_foil, alpha_range):
             kulfan_parameters=kf_foil,
             alpha=alpha,
             Re=Re,
-            model_size="xxlarge"
+            model_size="xxsmall"
         )
         Re_all.extend([Re] * len(alpha))
         alpha_all.extend(alpha)
@@ -149,20 +150,48 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
             traceback.print_exc()
             return 0.0
 
+    def constraint_function(**params):
+        try:
+            bo_params = [params[f'p{i}'] for i in range(18)]
+
+            if np.any(np.isnan(bo_params)) or np.any(np.isinf(bo_params)):
+                print("Invalid params: NaN or Inf detected")
+                return 0.0
+
+            kulfan = bo_to_kulfan(bo_params)
+
+            upper = np.array(kulfan["upper_weights"])
+            lower = np.array(kulfan["lower_weights"])
+            for i in np.arange(len(upper)):
+                if (lower[i] >= upper[i]):
+                    return -1
+            return 1
+            
+        except Exception as e:
+            print(f"Objective function error: {e}")
+            traceback.print_exc()
+            return 0.0
+
     pbounds = {
         'p0': (0.01, 0.3),    # leading_edge_weight
         'p1': (0.01, 0.05),   # TE_thickness
     }
     # Upper weights p2 to p9 should be >= 0 (e.g. 0 to 0.1)
     for i in range(2, 10):
-        pbounds[f'p{i}'] = (0.0, 0.15)
+        pbounds[f'p{i}'] = (0, 1.2)
 
     # Lower weights p10 to p17 should be <= 0 (e.g. -0.1 to 0)
     for i in range(10, 18):
-        pbounds[f'p{i}'] = (-0.15, 0.0)
+        pbounds[f'p{i}'] = (-0.2, 0.2)
+
+    acquisition_function = acquisition.ExpectedImprovement(xi=0.05)
+    acquisition_function2 = acquisition.ProbabilityOfImprovement(xi=1e-2)
+    constraint = sci.optimize.NonlinearConstraint(constraint_function, 0, np.inf)
 
     optimizer = BayesianOptimization(
         f=cst_objective,
+        acquisition_function=acquisition_function2,
+        constraint=constraint,
         pbounds=pbounds,
         verbose=2,
         random_state=42,
@@ -183,7 +212,7 @@ def bayop_test(U_design, R, eta_0, lambda_design, B, R_hub, N,
         optimizer.probe(init_point)
 
     try:
-        optimizer.maximize(init_points=20, n_iter=80)
+        optimizer.maximize(init_points=10, n_iter=80)
     except Exception as e:
         print(f"Bayesian optimization failed: {e}")
         traceback.print_exc()

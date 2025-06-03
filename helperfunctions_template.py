@@ -93,7 +93,7 @@ def tiploss(B, R, r, phi):
     Note: If `r` and `phi` are arrays, F will be a vector of tip-loss corrections along the blade span.
     """
     # Equation for Prandtl tip-loss correction
-    F = (2/np.pi)*np.acos(np.exp(-(B/2)*(R-r)/(r*np.sin(phi))))
+    F = (2/np.pi)*np.arccos(np.exp(-(B/2)*(R-r)/(r*np.sin(phi))))
     
     return F
 
