@@ -23,7 +23,7 @@ from helperfunctions_template import get_foil_data, interp_foil, tiploss, BEM_CL
 
 plt.close('all')
 
-def BEM_analysis_looped(U_design, R, eta_0, lambda_design, r_hub, B, Re_design, performance_file, rho, nu):
+def BEM_analysis_looped(U_design, R, eta_0, lambda_design, B, r_hub, N, performance_file, Re_design, rho, nu):
 # this loop is necessary to ensure that the Reynolds number used in the BEM code is corrected from the initial guess and rerun to ensure an accurate Cp
 
     Re_blade = 3e6 #this is just an initial value to ensure the while loop starts, until it is updated by the BEM code vs the calculated
@@ -31,17 +31,18 @@ def BEM_analysis_looped(U_design, R, eta_0, lambda_design, r_hub, B, Re_design, 
     #loop over BEM code until predicted Re matches output
     while abs(Re_design - Re_blade)/Re_blade > 0.02: #if there is less than a 2% on predicted vs calculated Re
         Re_design = Re_blade #update prediction to calculated value
-        CP, P_e, Re_blade = BEM_analysis(U_design=U_design, R = R, eta_0=eta_0, lambda_design = lambda_design, r_hub=r_hub, B = B, Re_design = Re_design, performance_file=performance_file, rho=rho, nu=nu) 
+        CP, P_e, Re_blade = BEM_analysis(U_design, R, eta_0, lambda_design, B, r_hub, N, performance_file, Re_design, rho, nu) 
 
-    return CP, P_e
+    return CP, P_e, Re_design
 
-#%% Setup
+#%% Setup BEM abalysis to calculate coefficient of performance (Cp) from NeuralFoil calculations and design parameters
 def BEM_analysis(U_design, R, eta_0, lambda_design, B, r_hub, N, performance_file, Re_design, rho, nu):
     
     # Plot style
     BEM_color = np.array([0, 128, 255]) / 255
     #%% Part A: Blade Shape
     # Load airfoil performance data
+    # Here, the performance file includes lift and drag coefficients from NeuralFoil
     foil = get_foil_data(performance_file)
 
     # Get optimal angle of attack at design Re

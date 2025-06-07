@@ -5,6 +5,7 @@ import numpy as np
 from scipy.interpolate import griddata
 from scipy.interpolate import LinearNDInterpolator
 import matplotlib.pyplot as plt
+
 def get_foil_data(foil_file):
     """
     Description: load airfoil data from data file
